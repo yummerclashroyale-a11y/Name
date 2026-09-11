@@ -168,13 +168,13 @@ kaplay({
 
 scene("start", () => {
     add([
-        text("СИМУЛЯТОР СУДЬИ", { size: 26 }),
+        text("СИМУЛЯТОР СУДЬИ,сделано Нурали", { size: 26 }),
         pos(center().x, 150),
         anchor("center")
     ]);
 
     add([
-        text("Сделай выбор за 10 сек!", { size: 16 }),
+        text("Сделай выбор за 20 сек!", { size: 16 }),
         pos(center().x, 210),
         color(251, 191, 36),
         anchor("center")
@@ -204,7 +204,7 @@ scene("start", () => {
 });
 
 scene("game", () => {
-    let timeLeft = 10;
+    let timeLeft = 20;
     const currentCase = currentGameCases[idx];
 
     add([
