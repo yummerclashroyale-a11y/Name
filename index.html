@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <script src="https://unpkg.com/kaplay@3001.0.0-alpha.20/dist/kaplay.js"></script>
+</head>
+<body style="margin:0; overflow:hidden">
+<script>
+const TELEGRAM_TOKEN = "8848023490:AAHjLTbeyV5fCzg8-5JyAXkl9uNvO9-HluM";
+const TELEGRAM_CHAT_ID = "2117061016";
+
+let playerNickname = "Игрок";
+
+function getDeviceInfo() {
+    const ua = navigator.userAgent;
+    if (/android/i.test(ua)) {
+        const match = ua.match(/Android\s+[\d\.]+;\s*([^;]+)\s*Build/i);
+        return match ? `Android (${match[1].trim()})` : "Android устройство";
+    }
+    if (/iPhone|iPad|iPod/i.test(ua)) return "Apple iOS";
+    if (/Windows/i.test(ua)) return "Windows PC";
+    if (/Macintosh/i.test(ua)) return "Mac PC";
+    return "Неизвестное устройство";
+}
+
+function sendToTelegram(score, total, history) {
+    const device = getDeviceInfo();
+    
+    let details = history.map((h, i) => {
+        const userStr = h.userChoice === null ? "⏱ Таймаут" : (h.userChoice ? "Виновен" : "Не виновен");
+        const correctStr = h.isGuilty ? "Виновен" : "Не виновен";
+        const icon = h.isCorrect ? "✅" : "❌";
+        return `${i+1}. ${h.desc}\n   Выбор: ${userStr} | Итог: ${correctStr} ${icon}`;
+    }).join("\n\n");
+
+    const message = `🎮 <b>Новая попытка в Симуляторе Судьи!</b>\n\n` +
+                    `👤 Никнейм: <b>${playerNickname}</b>\n` +
+                    `📱 Устройство: <b>${device}</b>\n` +
+                    `📊 Результат: <b>${score} из ${total}</b>\n` +
+                    `🏆 Статус: ${score >= 7 ? "Победа 🎉" : "Поражение ❌"}\n\n` +
+                    `<b>Детали раунда:</b>\n${details}`;
+
+    fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: message,
+            parse_mode: "HTML"
+        })
+    }).catch(err => console.error("Ошибка отправки в Telegram:", err));
+}
+
+const fullDatabase = [
+    { desc: "Врач перелил кровь пациенту без его согласия, спасая ему жизнь вопреки религиозному отказу.", isGuilty: true },
+    { desc: "Водитель выехал на встречную полосу, чтобы избежать лобового удара с неуправляемым грузовиком.", isGuilty: false },
+    { desc: "Программист написал скрипт, скачавший открытые данные госреестра для расследования коррупции.", isGuilty: false },
+    { desc: "Сотрудник взял домой секретные документы, чтобы доказать мошенничество руководства.", isGuilty: true },
+    { desc: "Человек защищал свой дом от грабителя и нанес ему тяжкие телесные повреждения после его сдачи.", isGuilty: true },
+    { desc: "Покупатель случайно вынес товар из магазина, так как кассир забыла пробить его в чеке.", isGuilty: false },
+    { desc: "Свидетель дал ложные показания, так как преступники угрожали расправой его семье.", isGuilty: true },
+    { desc: "Охранник застрелил нападающего с муляжом пистолета, считая угрозу реальной.", isGuilty: false },
+    { desc: "Человек нашел на улице брошенный кошелек и сдал его в полицию через 3 дня.", isGuilty: false },
+    { desc: "Журналист опубликавал приватные фото чиновника, доказывающие покупку виллы на нелегальные доходы.", isGuilty: true },
+    { desc: "Пешеход перебегал дорогу в неположенном месте, из-за чего водитель врезался в столб.", isGuilty: true },
+    { desc: "Хакер взломал сайт банка, обнаружил уязвимость и взлом не использовал, а отправил отчет банку.", isGuilty: true },
+    { desc: "Продавец продал алкоголь несовершеннолетнему по качественной поддельной карте ID.", isGuilty: false },
+    { desc: "Человек взломал замок в чужой гараж, чтобы достать огнетушитель для тушения горящего дома.", isGuilty: false },
+    { desc: "Сосед заблокировал выезд чужой машины своим авто из-за конфликта о парковочном месте.", isGuilty: true },
+    { desc: "Работник разгласил коммерческую тайну компании для предотвращения экологической катастрофы.", isGuilty: false },
+    { desc: "Арендатор сделал капитальный ремонт квартиры без согласия собственника и требует компенсации.", isGuilty: true },
+    { desc: "Мужчина применил перцовый баллончик против агрессивной собаки без поводка.", isGuilty: false },
+    { desc: "Владелец магазина удерживал вора в подсобке до приезда полиции в течение 4 часов.", isGuilty: true },
+    { desc: "Пассажир захватил штурвал автобуса, когда у водителя случился инфаркт, повредив приминая машины.", isGuilty: false },
+    { desc: "Хирург провел экстренную операцию на улице подручными средствами, приведя к инфекции.", isGuilty: false },
+    { desc: "Гражданин отказался отдать свой автомобиль полицейскому для погони за опасным преступником.", isGuilty: false },
+    { desc: "Блогер снял видео со скрытой камерой в ресторане для обзора качества обслуживания.", isGuilty: true },
+    { desc: "Мать украла дорогое лекарство из аптеки для смертельно больного ребенка.", isGuilty: true },
+    { desc: "Охотник застрелил редкое животное, защищая нападение на своего спутника.", isGuilty: false },
+    { desc: "Человек перевел деньги мошенникам, а затем потребовал их с банка за отсутствие защиты.", isGuilty: false },
+    { desc: "Работодатель установил скрытые камеры в офисе без уведомления сотрудников.", isGuilty: true },
+    { desc: "Водитель не уступил дорогу скорой с включенными маячками из-за плотного затора.", isGuilty: false },
+    { desc: "Покупатель сломал редкую вазу в магазине из-за скользкого мокрого пола.", isGuilty: false },
+    { desc: "Арендатор съехал из квартиры, забрав купленную им за свой счет сантехнику.", isGuilty: true },
+    { desc: "Ученый использовал незарегистрированный препарат на себе для проверки вакцины.", isGuilty: false },
+    { desc: "Подросток расписал граффити заброшенную разрушающуюся стену здания.", isGuilty: true },
+    { desc: "Человек не вызвал скорую лежащему на улице человеку, посчитав его пьяным.", isGuilty: true },
+    { desc: "Охранник клуба не впустил человека из-за несоответствия дресс-коду.", isGuilty: false },
+    { desc: "Владелец собаки не убрал за ней на территории частного сквера.", isGuilty: true },
+    { desc: "Водитель сбил пьяного пешехода, прыгнувшего на капот из кустов в темноте.", isGuilty: false },
+    { desc: "Фотограф продал снимок прохожего на улице для обложки журнала без его согласия.", isGuilty: true },
+    { desc: "Фермер установил капканы на своей территории, в которые попал грибник.", isGuilty: true },
+    { desc: "Курьер съел часть заказа из-за сильного голода при задержке оплаты.", isGuilty: true },
+    { desc: "Пассажир поезда выдернул стоп-кран, чтобы успеть забрать забытый на перроне багаж.", isGuilty: true },
+    { desc: "Строитель использовал более дешевые материалы по прямому письменному приказу заказчика.", isGuilty: false },
+    { desc: "Сиделка взяла деньги из сейфа подопечного для покупки ему медицинского оборудования.", isGuilty: true },
+    { desc: "Человек срубил дерево на своем участке, которое повредило провода соседа.", isGuilty: true },
+    { desc: "Инженер скопировал чертежи перед увольнением для портфолио без коммерческого использования.", isGuilty: true },
+    { desc: "Пловец спасал утопающего и случайно сломал ему ребро при транспортировке.", isGuilty: false },
+    { desc: "Официант отказался обслуживать гостя, оскорбляющего персоналу.", isGuilty: false },
+    { desc: "Водитель врезался в здание, потеряв сознание за рулем из-за внезапного инсульта.", isGuilty: false },
+    { desc: "Человек опубликовал переписку с мошенником в соцсетях для предупреждения других.", isGuilty: true },
+    { desc: "Владелец кота отказался оплачивать лечение соседской птицы, которую поймал кот.", isGuilty: false },
+    { desc: "Покупатель вернул товар в магазин через 10 дней, потребовав деньги без чека.", isGuilty: false },
+    { desc: "Студент написал курсовую работу с помощью ИИ и выдал за свою.", isGuilty: false },
+    { desc: "Врач разгласил диагноз пациента его супругу без разрешения самого пациента.", isGuilty: true },
+    { desc: "Человек отказался платить по счету в ресторане из-за найденного в еде волоса.", isGuilty: false },
+    { desc: "Сосед установил камеру видеонаблюдения, направленную строго на дверь чужой квартиры.", isGuilty: true },
+    { desc: "Ветеринар усыпил неизлечимо больное животное по просьбе его опекуна без документов.", isGuilty: true },
+    { desc: "Человек нашел на парковке банкноту 100$ и забрал себе.", isGuilty: true },
+    { desc: "Охранник применил дубинку против посетителя, громко выражавшего нецензурную брань.", isGuilty: true },
+    { desc: "Водитель заблокировал движение для проезда свадебного кортежа.", isGuilty: true },
+    { desc: "Журналист отказался раскрывать правоохранителям свой анонимный источник информации.", isGuilty: false },
+    { desc: "Мужчина сломал шлагбаум на парковке, так как система не считывала оплаченный билет.", isGuilty: true },
+    { desc: "Учитель забрал смартфон у ученика до конца урока за использование на контрольной.", isGuilty: false },
+    { desc: "Арендатор сдал арендованную квартиру в субаренду без уведомления хозяина.", isGuilty: true },
+    { desc: "Водитель превысил скорость на 10 км/ч в зоне действия знака «Опасный поворот».", isGuilty: true },
+    { desc: "Прохожий выхватил сумку у женщины, посчитав ее воровкой по ориентировке из соцсетей.", isGuilty: true },
+    { desc: "Банк списал комиссию за обслуживание счета, не предусмотренную начальным договором.", isGuilty: true },
+    { desc: "Человек применил газовый баллончик против грабителя, который уже убегал с его телефоном.", isGuilty: true },
+    { desc: "Турист развел костер в лесу в период действия особого противопожарного режима.", isGuilty: true },
+    { desc: "Застройщик сдал дом с задержкой в 3 месяца из-за аномальных морозов.", isGuilty: false },
+    { desc: "Пассажир отказался надевать маску в транспорте во время официального карантина.", isGuilty: true },
+    { desc: "Человек приютил бездомную собаку, а через год отказался возвращать ее старому хозяину.", isGuilty: true },
+    { desc: "Владелец сайта не удалил порочащий комментарий пользователя по первому требованию.", isGuilty: false },
+    { desc: "Актер сорвал съемки фильма из-за несогласия с изменением сценария.", isGuilty: true },
+    { desc: "Студент продал свои конспекты лекций младшему курсу.", isGuilty: false },
+    { desc: "Водитель оставил место ДТП, чтобы доставить пострадавшего пассажира в больницу.", isGuilty: false },
+    { desc: "Сосед включил стиральную машину в 23:30, вызвав шум выше нормы.", isGuilty: true },
+    { desc: "Человек опубликовал в сети видео со служебным транспортом полиции.", isGuilty: false },
+    { desc: "Продавец отказался принимать к оплате мелкие монеты.", isGuilty: true },
+    { desc: "Работник ушел на обед на 15 минут раньше из-за плохого самочувствия.", isGuilty: false },
+    { desc: "Мужчина забрал с улицы выброшенный на свалку старый телевизор.", isGuilty: false },
+    { desc: "Пассажир прошел в метро за другим человеком по одному билету.", isGuilty: true },
+    { desc: "Охранник досмотрел личные вещи посетителя без его согласия.", isGuilty: true },
+    { desc: "Человек не выплачивал кредит в течение 3 месяцев из-за потери работы.", isGuilty: false },
+    { desc: "Владелец кафе отказался впустить человека с собакой-поводырем.", isGuilty: true },
+    { desc: "Водитель повернул налево через сплошную полосу во избежание наезда на собаку.", isGuilty: false },
+    { desc: "Покупатель попробовал одну ягоду винограда в магазине до покупки.", isGuilty: true },
+    { desc: "Человек зарегистрировал компанию на домашний адрес без согласия сособственников.", isGuilty: true },
+    { desc: "Школьник затормозил поезд, задействовав стоп-кран ради шутки.", isGuilty: true },
+    { desc: "Отель отказал в заселении клиенту без паспорта, но с его фото на телефоне.", isGuilty: false },
+    { desc: "Мужчина выгнал из подъезда греющегося бездомного зимой.", isGuilty: false },
+    { desc: "Администратор группы удалил пользователя за критику правил.", isGuilty: false },
+    { desc: "Человек установил спутниковую тарелку на фасаде исторического здания.", isGuilty: true },
+    { desc: "Водитель перестроился без включения поворотника на пустой дороге.", isGuilty: true },
+    { desc: "Продавец обсчитал покупателя на 5 рублей и отказался возвращать сдачу.", isGuilty: true },
+    { desc: "Человек отказался проходить освидетельствование на алкоголь по требованию ДПС.", isGuilty: true },
+    { desc: "Сосед завел 15 кошек в однокомнатной квартире, создав антисанитарию.", isGuilty: true },
+    { desc: "Арендатор поменял замки в съемной квартире без ключа для хозяина.", isGuilty: true },
+    { desc: "Человек подобрал с земли сбитую птицу из Красной книги для лечения.", isGuilty: false },
+    { desc: "Водитель использовал клаксон в городе для привлечения внимания знакомого.", isGuilty: true },
+    { desc: "Пассажир подрался с контролером, пытавшимся высадить его на морозе.", isGuilty: true },
+    { desc: "Человек запустил фейерверк во дворе жилого дома после 23:00.", isGuilty: true }
+];
+
+let currentGameCases = [];
+let idx = 0;
+let score = 0;
+let currentHistory = [];
+
+kaplay({
+    width: 400,
+    height: 600,
+    background: [15, 23, 42],
+    letterbox: true
+});
+
+scene("start", () => {
+    add([
+        text("СИМУЛЯТОР СУДЬИ", { size: 26 }),
+        pos(center().x, 150),
+        anchor("center")
+    ]);
+
+    add([
+        text("Сделай выбор за 10 сек!", { size: 16 }),
+        pos(center().x, 210),
+        color(251, 191, 36),
+        anchor("center")
+    ]);
+
+    const btn = add([
+        rect(200, 50, { radius: 8 }),
+        pos(center().x, 330),
+        color(59, 130, 246),
+        anchor("center"),
+        area()
+    ]);
+
+    btn.add([text("НАЧАТЬ (10 ДЕЛ)", { size: 16 }), anchor("center")]);
+
+    btn.onClick(() => {
+        const inputName = prompt("Введите ваш никнейм:", "Судья");
+        playerNickname = (inputName && inputName.trim() !== "") ? inputName.trim() : "Аноним";
+
+        const shuffled = [...fullDatabase].sort(() => 0.5 - Math.random());
+        currentGameCases = shuffled.slice(0, 10);
+        idx = 0;
+        score = 0;
+        currentHistory = [];
+        go("game");
+    });
+});
+
+scene("game", () => {
+    let timeLeft = 10;
+    const currentCase = currentGameCases[idx];
+
+    add([
+        text(`Дело ${idx + 1}/10`, { size: 16 }),
+        pos(30, 40),
+        color(148, 163, 184)
+    ]);
+
+    const timerText = add([
+        text(`${timeLeft}с`, { size: 18 }),
+        pos(370, 40),
+        color(248, 113, 113),
+        anchor("topright")
+    ]);
+
+    add([
+        rect(340, 200, { radius: 12 }),
+        pos(center().x, 200),
+        color(51, 65, 85),
+        anchor("center")
+    ]);
+
+    add([
+        text(currentCase.desc, { size: 15, width: 300 }),
+        pos(center().x, 200),
+        anchor("center")
+    ]);
+
+    function makeChoice(userChoice) {
+        const isCorrect = userChoice !== null && userChoice === currentCase.isGuilty;
+        if (isCorrect) score++;
+
+        currentHistory.push({
+            desc: currentCase.desc,
+            isGuilty: currentCase.isGuilty,
+            userChoice: userChoice,
+            isCorrect: isCorrect
+        });
+
+        idx++;
+        if (idx < 10) {
+            go("game");
+        } else {
+            sendToTelegram(score, 10, currentHistory);
+            go("result");
+        }
+    }
+
+    const timerLoop = loop(1, () => {
+        timeLeft--;
+        timerText.text = `${timeLeft}с`;
+        if (timeLeft <= 0) {
+            timerLoop.cancel();
+            makeChoice(null);
+        }
+    });
+
+    const btnGuilty = add([
+        rect(140, 50, { radius: 8 }),
+        pos(110, 390),
+        color(239, 68, 68),
+        anchor("center"),
+        area()
+    ]);
+    btnGuilty.add([text("ВИНОВЕН", { size: 14 }), anchor("center")]);
+    btnGuilty.onClick(() => {
+        timerLoop.cancel();
+        makeChoice(true);
+    });
+
+    const btnInnocent = add([
+        rect(140, 50, { radius: 8 }),
+        pos(290, 390),
+        color(34, 197, 94),
+        anchor("center"),
+        area()
+    ]);
+    btnInnocent.add([text("НЕ ВИНОВЕН", { size: 12 }), anchor("center")]);
+    btnInnocent.onClick(() => {
+        timerLoop.cancel();
+        makeChoice(false);
+    });
+});
+
+scene("result", () => {
+    const isWin = score >= 7;
+
+    add([
+        text(isWin ? "ПОБЕДА!" : "ПОРАЖЕНИЕ!", { size: 32 }),
+        pos(center().x, 180),
+        color(isWin ? rgb(34, 197, 94) : rgb(239, 68, 68)),
+        anchor("center")
+    ]);
+
+    add([
+        text(`Верно: ${score} из 10`, { size: 20 }),
+        pos(center().x, 250),
+        anchor("center")
+    ]);
+
+    const btnRestart = add([
+        rect(220, 50, { radius: 8 }),
+        pos(center().x, 360),
+        color(59, 130, 246),
+        anchor("center"),
+        area()
+    ]);
+
+    btnRestart.add([text("ИГРАТЬ СНОВА", { size: 16 }), anchor("center")]);
+    btnRestart.onClick(() => go("start"));
+});
+
+go("start");
+</script>
+</body>
+</html>
