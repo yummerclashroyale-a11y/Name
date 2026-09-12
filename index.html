@@ -1,323 +1,432 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="utf-8">
-    <script src="https://unpkg.com/kaplay@3001.0.0-alpha.20/dist/kaplay.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Дело #1: Проникновение в Синдикат</title>
+    <script src="https://cdn.jsdelivr.net/npm/excalibur@0.29.3/build/dist/excalibur.min.js"></script>
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+        html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #050b14; font-family: sans-serif; }
+        #game-canvas { width: 100%; height: 100%; display: block; }
+
+        .joystick-base {
+            position: absolute; bottom: 25px; width: 85px; height: 85px;
+            background: rgba(15, 23, 42, 0.6); border: 2px solid rgba(56, 189, 248, 0.35);
+            border-radius: 50%; z-index: 100; touch-action: none;
+            display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        #left-joystick-base { left: 25px; }
+        #right-joystick-base { right: 25px; border-color: rgba(244, 63, 94, 0.35); position: absolute; }
+
+        .joystick-stick { width: 34px; height: 34px; background: rgba(56, 189, 248, 0.8); border-radius: 50%; pointer-events: none; box-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+        #right-joystick-stick { background: rgba(244, 63, 94, 0.8); box-shadow: 0 0 10px rgba(244, 63, 94, 0.5); z-index: 2; }
+
+        #ui-overlay { position: absolute; top: 10px; left: 10px; z-index: 200; pointer-events: none; }
+        .scan-info { background: rgba(15, 23, 42, 0.85); border: 1px solid #38bdf8; color: #38bdf8; padding: 10px 14px; border-radius: 8px; font-size: 13px; max-width: 320px; backdrop-filter: blur(4px); }
+
+        /* Экран заставки */
+        #intro-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #050b14; z-index: 999; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: #fff; text-align: center;
+            transition: opacity 1s ease;
+        }
+        #intro-screen h1 { font-size: 28px; color: #38bdf8; margin: 0 0 10px 0; text-shadow: 0 0 15px rgba(56,189,248,0.5); }
+        #intro-screen p { font-size: 18px; color: #94a3b8; margin: 0; letter-spacing: 1px; }
+
+        .modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 11, 20, 0.95); z-index: 300; display: flex;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-content {
+            background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px;
+            padding: 22px; max-width: 420px; width: 100%; color: #fff; text-align: center;
+        }
+        .btn {
+            background: #0284c7; color: #fff; border: none; padding: 12px; border-radius: 6px;
+            font-weight: bold; cursor: pointer; margin-top: 12px; width: 100%; font-size: 14px;
+        }
+        .btn-danger { background: #be123c; }
+
+        .pass-input {
+            width: 90%; padding: 12px; margin: 15px auto; font-size: 20px; text-align: center;
+            background: #1e293b; border: 2px solid #38bdf8; color: #38bdf8; border-radius: 8px;
+            text-transform: uppercase; letter-spacing: 2px; outline: none; display: block;
+        }
+    </style>
 </head>
-<body style="margin:0; overflow:hidden">
+<body>
+
+<div id="intro-screen">
+    <h1>Made by Yummer</h1>
+    <p>Сделано Нурали</p>
+</div>
+
+<canvas id="game-canvas"></canvas>
+
+<div id="left-joystick-base" class="joystick-base"><div id="left-joystick-stick" class="joystick-stick"></div></div>
+<div id="right-joystick-base" class="joystick-base">
+    <div id="right-joystick-stick" class="joystick-stick"></div>
+</div>
+
+<div id="ui-overlay">
+    <div id="scan-info" class="scan-info"><b>Детективный сканер:</b> Ищите улики правым джойстиком.</div>
+</div>
+
+<div id="dialogue-modal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h2 style="color: #f43f5e;">Охранник Синдиката</h2>
+        <p>«Стой! Назови секретный пароль для входа в банду!»</p>
+        <input type="text" id="password-field" class="pass-input" placeholder="ВВЕДИТЕ ПАРОЛЬ..." autocomplete="off">
+        <button class="btn" onclick="submitPassword()">Ответить охраннику</button>
+    </div>
+</div>
+
+<div id="result-modal" class="modal" style="display:none;">
+    <div class="modal-content" id="result-content"></div>
+</div>
+
 <script>
-const TELEGRAM_TOKEN = "8848023490:AAHjLTbeyV5fCzg8-5JyAXkl9uNvO9-HluM";
-const TELEGRAM_CHAT_ID = "2117061016";
+// Авто-скрытие заставки через 2.5 секунды
+setTimeout(() => {
+    const intro = document.getElementById('intro-screen');
+    intro.style.opacity = '0';
+    setTimeout(() => intro.remove(), 1000);
+}, 2500);
 
-let playerNickname = "Игрок";
+let moveVector = ex.vec(0, 0);
+let scanVector = ex.vec(1, 0);
+let isScanningActive = false;
 
-function getDeviceInfo() {
-    const ua = navigator.userAgent;
-    if (/android/i.test(ua)) {
-        const match = ua.match(/Android\s+[\d\.]+;\s*([^;]+)\s*Build/i);
-        return match ? `Android (${match[1].trim()})` : "Android устройство";
-    }
-    if (/iPhone|iPad|iPod/i.test(ua)) return "Apple iOS";
-    if (/Windows/i.test(ua)) return "Windows PC";
-    if (/Macintosh/i.test(ua)) return "Mac PC";
-    return "Неизвестное устройство";
+let scanCooldown = false;
+let cooldownTimer = 0;
+const COOLDOWN_MAX = 2.0;
+
+const game = new ex.Engine({
+    canvasElementId: 'game-canvas',
+    displayMode: ex.DisplayMode.FillScreen,
+    backgroundColor: ex.Color.fromHex('#050b14')
+});
+
+const MAP_SIZE = 1000;
+const bgImage = new ex.ImageSource('b.png');
+const guardImage = new ex.ImageSource('bad.png');
+const lanternCommonImage = new ex.ImageSource('ff.png');
+const lanternPurpleImage = new ex.ImageSource('fff.png');
+
+const hSources = [];
+const aSources = [];
+const rSources = [];
+
+for (let i = 1; i <= 8; i++) {
+    hSources.push(new ex.ImageSource(`h${i}.png`));
+    aSources.push(new ex.ImageSource(`a${i}.png`));
+    rSources.push(new ex.ImageSource(`r${i}.png`));
 }
 
-function sendToTelegram(score, total, history) {
-    const device = getDeviceInfo();
+const loader = new ex.Loader([
+    bgImage, 
+    guardImage, 
+    lanternCommonImage, 
+    lanternPurpleImage, 
+    ...hSources, 
+    ...aSources, 
+    ...rSources
+]);
+loader.suppressPlayButton = true;
+
+let player, scanTargets = [], npcActor;
+let scanConeActor;
+
+function setupJoystick(baseId, stickId, onMove, onRelease) {
+    const base = document.getElementById(baseId);
+    const stick = document.getElementById(stickId);
+    const RADIUS = 28;
+    let touchId = null;
+
+    function handle(cx, cy) {
+        const rect = base.getBoundingClientRect();
+        const dx = cx - (rect.left + rect.width / 2);
+        const dy = cy - (rect.top + rect.height / 2);
+        const dist = Math.hypot(dx, dy);
+        if (dist < 2) { stick.style.transform = `translate(0,0)`; onMove(ex.vec(0,0)); return; }
+        const angle = Math.atan2(dy, dx);
+        const clamp = Math.min(dist, RADIUS);
+        const sx = Math.cos(angle) * clamp, sy = Math.sin(angle) * clamp;
+        stick.style.transform = `translate(${sx}px, ${sy}px)`;
+        onMove(ex.vec(sx / RADIUS, sy / RADIUS));
+    }
+
+    base.addEventListener("touchstart", (e) => { e.preventDefault(); touchId = e.changedTouches[0].identifier; handle(e.changedTouches[0].clientX, e.changedTouches[0].clientY); }, {passive:false});
+    window.addEventListener("touchmove", (e) => {
+        if (touchId === null) return;
+        for (let t of e.changedTouches) if (t.identifier === touchId) handle(t.clientX, t.clientY);
+    }, {passive:true});
+    window.addEventListener("touchend", () => { touchId = null; stick.style.transform = `translate(0,0)`; if (onRelease) onRelease(); });
+}
+
+setupJoystick("left-joystick-base", "left-joystick-stick", v => moveVector = v, () => moveVector = ex.vec(0,0));
+
+setupJoystick("right-joystick-base", "right-joystick-stick", 
+    v => { 
+        if (scanCooldown) return;
+        if (v.size > 0.1) { 
+            scanVector = v.normalize(); 
+            isScanningActive = true; 
+        } 
+    },
+    () => { 
+        if (scanCooldown) return;
+        if (isScanningActive) { 
+            checkScan(); 
+            isScanningActive = false; 
+        } 
+    }
+);
+
+function createScanCanvas() {
+    const R = 150;
+    const canvas = new ex.Canvas({
+        width: R * 2, height: R * 2,
+        draw: (ctx) => {
+            ctx.clearRect(0, 0, R * 2, R * 2);
+            ctx.beginPath();
+            ctx.moveTo(R, R);
+            ctx.arc(R, R, R, -35 * Math.PI / 180, 35 * Math.PI / 180);
+            ctx.closePath();
+
+            const grad = ctx.createRadialGradient(R, R, 0, R, R, R);
+            grad.addColorStop(0, 'rgba(56, 189, 248, 0.7)');
+            grad.addColorStop(1, 'rgba(56, 189, 248, 0.05)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    });
+    canvas.origin = ex.vec(0, R);
+    return canvas;
+}
+
+game.start(loader).then(() => {
+    const bgSprite = bgImage.toSprite();
+    bgSprite.scale = ex.vec(0.35, 0.35);
+    const tileW = 64, tileH = 64;
     
-    let details = history.map((h, i) => {
-        const userStr = h.userChoice === null ? "⏱ Таймаут" : (h.userChoice ? "Виновен" : "Не виновен");
-        const correctStr = h.isGuilty ? "Виновен" : "Не виновен";
-        const icon = h.isCorrect ? "✅" : "❌";
-        return `${i+1}. ${h.desc}\n   Выбор: ${userStr} | Итог: ${correctStr} ${icon}`;
-    }).join("\n\n");
-
-    const message = `🎮 <b>Новая попытка в Симуляторе Судьи!</b>\n\n` +
-                    `👤 Никнейм: <b>${playerNickname}</b>\n` +
-                    `📱 Устройство: <b>${device}</b>\n` +
-                    `📊 Результат: <b>${score} из ${total}</b>\n` +
-                    `🏆 Статус: ${score >= 7 ? "Победа 🎉" : "Поражение ❌"}\n\n` +
-                    `<b>Детали раунда:</b>\n${details}`;
-
-    fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            chat_id: TELEGRAM_CHAT_ID,
-            text: message,
-            parse_mode: "HTML"
-        })
-    }).catch(err => console.error("Ошибка отправки в Telegram:", err));
-}
-
-const fullDatabase = [
-    { desc: "Врач перелил кровь пациенту без его согласия, спасая ему жизнь вопреки религиозному отказу.", isGuilty: true },
-    { desc: "Водитель выехал на встречную полосу, чтобы избежать лобового удара с неуправляемым грузовиком.", isGuilty: false },
-    { desc: "Программист написал скрипт, скачавший открытые данные госреестра для расследования коррупции.", isGuilty: false },
-    { desc: "Сотрудник взял домой секретные документы, чтобы доказать мошенничество руководства.", isGuilty: true },
-    { desc: "Человек защищал свой дом от грабителя и нанес ему тяжкие телесные повреждения после его сдачи.", isGuilty: true },
-    { desc: "Покупатель случайно вынес товар из магазина, так как кассир забыла пробить его в чеке.", isGuilty: false },
-    { desc: "Свидетель дал ложные показания, так как преступники угрожали расправой его семье.", isGuilty: true },
-    { desc: "Охранник застрелил нападающего с муляжом пистолета, считая угрозу реальной.", isGuilty: false },
-    { desc: "Человек нашел на улице брошенный кошелек и сдал его в полицию через 3 дня.", isGuilty: false },
-    { desc: "Журналист опубликавал приватные фото чиновника, доказывающие покупку виллы на нелегальные доходы.", isGuilty: true },
-    { desc: "Пешеход перебегал дорогу в неположенном месте, из-за чего водитель врезался в столб.", isGuilty: true },
-    { desc: "Хакер взломал сайт банка, обнаружил уязвимость и взлом не использовал, а отправил отчет банку.", isGuilty: true },
-    { desc: "Продавец продал алкоголь несовершеннолетнему по качественной поддельной карте ID.", isGuilty: false },
-    { desc: "Человек взломал замок в чужой гараж, чтобы достать огнетушитель для тушения горящего дома.", isGuilty: false },
-    { desc: "Сосед заблокировал выезд чужой машины своим авто из-за конфликта о парковочном месте.", isGuilty: true },
-    { desc: "Работник разгласил коммерческую тайну компании для предотвращения экологической катастрофы.", isGuilty: false },
-    { desc: "Арендатор сделал капитальный ремонт квартиры без согласия собственника и требует компенсации.", isGuilty: true },
-    { desc: "Мужчина применил перцовый баллончик против агрессивной собаки без поводка.", isGuilty: false },
-    { desc: "Владелец магазина удерживал вора в подсобке до приезда полиции в течение 4 часов.", isGuilty: true },
-    { desc: "Пассажир захватил штурвал автобуса, когда у водителя случился инфаркт, повредив приминая машины.", isGuilty: false },
-    { desc: "Хирург провел экстренную операцию на улице подручными средствами, приведя к инфекции.", isGuilty: false },
-    { desc: "Гражданин отказался отдать свой автомобиль полицейскому для погони за опасным преступником.", isGuilty: false },
-    { desc: "Блогер снял видео со скрытой камерой в ресторане для обзора качества обслуживания.", isGuilty: true },
-    { desc: "Мать украла дорогое лекарство из аптеки для смертельно больного ребенка.", isGuilty: true },
-    { desc: "Охотник застрелил редкое животное, защищая нападение на своего спутника.", isGuilty: false },
-    { desc: "Человек перевел деньги мошенникам, а затем потребовал их с банка за отсутствие защиты.", isGuilty: false },
-    { desc: "Работодатель установил скрытые камеры в офисе без уведомления сотрудников.", isGuilty: true },
-    { desc: "Водитель не уступил дорогу скорой с включенными маячками из-за плотного затора.", isGuilty: false },
-    { desc: "Покупатель сломал редкую вазу в магазине из-за скользкого мокрого пола.", isGuilty: false },
-    { desc: "Арендатор съехал из квартиры, забрав купленную им за свой счет сантехнику.", isGuilty: true },
-    { desc: "Ученый использовал незарегистрированный препарат на себе для проверки вакцины.", isGuilty: false },
-    { desc: "Подросток расписал граффити заброшенную разрушающуюся стену здания.", isGuilty: true },
-    { desc: "Человек не вызвал скорую лежащему на улице человеку, посчитав его пьяным.", isGuilty: true },
-    { desc: "Охранник клуба не впустил человека из-за несоответствия дресс-коду.", isGuilty: false },
-    { desc: "Владелец собаки не убрал за ней на территории частного сквера.", isGuilty: true },
-    { desc: "Водитель сбил пьяного пешехода, прыгнувшего на капот из кустов в темноте.", isGuilty: false },
-    { desc: "Фотограф продал снимок прохожего на улице для обложки журнала без его согласия.", isGuilty: true },
-    { desc: "Фермер установил капканы на своей территории, в которые попал грибник.", isGuilty: true },
-    { desc: "Курьер съел часть заказа из-за сильного голода при задержке оплаты.", isGuilty: true },
-    { desc: "Пассажир поезда выдернул стоп-кран, чтобы успеть забрать забытый на перроне багаж.", isGuilty: true },
-    { desc: "Строитель использовал более дешевые материалы по прямому письменному приказу заказчика.", isGuilty: false },
-    { desc: "Сиделка взяла деньги из сейфа подопечного для покупки ему медицинского оборудования.", isGuilty: true },
-    { desc: "Человек срубил дерево на своем участке, которое повредило провода соседа.", isGuilty: true },
-    { desc: "Инженер скопировал чертежи перед увольнением для портфолио без коммерческого использования.", isGuilty: true },
-    { desc: "Пловец спасал утопающего и случайно сломал ему ребро при транспортировке.", isGuilty: false },
-    { desc: "Официант отказался обслуживать гостя, оскорбляющего персоналу.", isGuilty: false },
-    { desc: "Водитель врезался в здание, потеряв сознание за рулем из-за внезапного инсульта.", isGuilty: false },
-    { desc: "Человек опубликовал переписку с мошенником в соцсетях для предупреждения других.", isGuilty: true },
-    { desc: "Владелец кота отказался оплачивать лечение соседской птицы, которую поймал кот.", isGuilty: false },
-    { desc: "Покупатель вернул товар в магазин через 10 дней, потребовав деньги без чека.", isGuilty: false },
-    { desc: "Студент написал курсовую работу с помощью ИИ и выдал за свою.", isGuilty: false },
-    { desc: "Врач разгласил диагноз пациента его супругу без разрешения самого пациента.", isGuilty: true },
-    { desc: "Человек отказался платить по счету в ресторане из-за найденного в еде волоса.", isGuilty: false },
-    { desc: "Сосед установил камеру видеонаблюдения, направленную строго на дверь чужой квартиры.", isGuilty: true },
-    { desc: "Ветеринар усыпил неизлечимо больное животное по просьбе его опекуна без документов.", isGuilty: true },
-    { desc: "Человек нашел на парковке банкноту 100$ и забрал себе.", isGuilty: true },
-    { desc: "Охранник применил дубинку против посетителя, громко выражавшего нецензурную брань.", isGuilty: true },
-    { desc: "Водитель заблокировал движение для проезда свадебного кортежа.", isGuilty: true },
-    { desc: "Журналист отказался раскрывать правоохранителям свой анонимный источник информации.", isGuilty: false },
-    { desc: "Мужчина сломал шлагбаум на парковке, так как система не считывала оплаченный билет.", isGuilty: true },
-    { desc: "Учитель забрал смартфон у ученика до конца урока за использование на контрольной.", isGuilty: false },
-    { desc: "Арендатор сдал арендованную квартиру в субаренду без уведомления хозяина.", isGuilty: true },
-    { desc: "Водитель превысил скорость на 10 км/ч в зоне действия знака «Опасный поворот».", isGuilty: true },
-    { desc: "Прохожий выхватил сумку у женщины, посчитав ее воровкой по ориентировке из соцсетей.", isGuilty: true },
-    { desc: "Банк списал комиссию за обслуживание счета, не предусмотренную начальным договором.", isGuilty: true },
-    { desc: "Человек применил газовый баллончик против грабителя, который уже убегал с его телефоном.", isGuilty: true },
-    { desc: "Турист развел костер в лесу в период действия особого противопожарного режима.", isGuilty: true },
-    { desc: "Застройщик сдал дом с задержкой в 3 месяца из-за аномальных морозов.", isGuilty: false },
-    { desc: "Пассажир отказался надевать маску в транспорте во время официального карантина.", isGuilty: true },
-    { desc: "Человек приютил бездомную собаку, а через год отказался возвращать ее старому хозяину.", isGuilty: true },
-    { desc: "Владелец сайта не удалил порочащий комментарий пользователя по первому требованию.", isGuilty: false },
-    { desc: "Актер сорвал съемки фильма из-за несогласия с изменением сценария.", isGuilty: true },
-    { desc: "Студент продал свои конспекты лекций младшему курсу.", isGuilty: false },
-    { desc: "Водитель оставил место ДТП, чтобы доставить пострадавшего пассажира в больницу.", isGuilty: false },
-    { desc: "Сосед включил стиральную машину в 23:30, вызвав шум выше нормы.", isGuilty: true },
-    { desc: "Человек опубликовал в сети видео со служебным транспортом полиции.", isGuilty: false },
-    { desc: "Продавец отказался принимать к оплате мелкие монеты.", isGuilty: true },
-    { desc: "Работник ушел на обед на 15 минут раньше из-за плохого самочувствия.", isGuilty: false },
-    { desc: "Мужчина забрал с улицы выброшенный на свалку старый телевизор.", isGuilty: false },
-    { desc: "Пассажир прошел в метро за другим человеком по одному билету.", isGuilty: true },
-    { desc: "Охранник досмотрел личные вещи посетителя без его согласия.", isGuilty: true },
-    { desc: "Человек не выплачивал кредит в течение 3 месяцев из-за потери работы.", isGuilty: false },
-    { desc: "Владелец кафе отказался впустить человека с собакой-поводырем.", isGuilty: true },
-    { desc: "Водитель повернул налево через сплошную полосу во избежание наезда на собаку.", isGuilty: false },
-    { desc: "Покупатель попробовал одну ягоду винограда в магазине до покупки.", isGuilty: true },
-    { desc: "Человек зарегистрировал компанию на домашний адрес без согласия сособственников.", isGuilty: true },
-    { desc: "Школьник затормозил поезд, задействовав стоп-кран ради шутки.", isGuilty: true },
-    { desc: "Отель отказал в заселении клиенту без паспорта, но с его фото на телефоне.", isGuilty: false },
-    { desc: "Мужчина выгнал из подъезда греющегося бездомного зимой.", isGuilty: false },
-    { desc: "Администратор группы удалил пользователя за критику правил.", isGuilty: false },
-    { desc: "Человек установил спутниковую тарелку на фасаде исторического здания.", isGuilty: true },
-    { desc: "Водитель перестроился без включения поворотника на пустой дороге.", isGuilty: true },
-    { desc: "Продавец обсчитал покупателя на 5 рублей и отказался возвращать сдачу.", isGuilty: true },
-    { desc: "Человек отказался проходить освидетельствование на алкоголь по требованию ДПС.", isGuilty: true },
-    { desc: "Сосед завел 15 кошек в однокомнатной квартире, создав антисанитарию.", isGuilty: true },
-    { desc: "Арендатор поменял замки в съемной квартире без ключа для хозяина.", isGuilty: true },
-    { desc: "Человек подобрал с земли сбитую птицу из Красной книги для лечения.", isGuilty: false },
-    { desc: "Водитель использовал клаксон в городе для привлечения внимания знакомого.", isGuilty: true },
-    { desc: "Пассажир подрался с контролером, пытавшимся высадить его на морозе.", isGuilty: true },
-    { desc: "Человек запустил фейерверк во дворе жилого дома после 23:00.", isGuilty: true }
-];
-
-let currentGameCases = [];
-let idx = 0;
-let score = 0;
-let currentHistory = [];
-
-kaplay({
-    width: 400,
-    height: 600,
-    background: [15, 23, 42],
-    letterbox: true
-});
-
-scene("start", () => {
-    add([
-        text("СИМУЛЯТОР СУДЬИ,сделано Нурали", { size: 26 }),
-        pos(center().x, 150),
-        anchor("center")
-    ]);
-
-    add([
-        text("Сделай выбор за 20 сек!", { size: 16 }),
-        pos(center().x, 210),
-        color(251, 191, 36),
-        anchor("center")
-    ]);
-
-    const btn = add([
-        rect(200, 50, { radius: 8 }),
-        pos(center().x, 330),
-        color(59, 130, 246),
-        anchor("center"),
-        area()
-    ]);
-
-    btn.add([text("НАЧАТЬ (10 ДЕЛ)", { size: 16 }), anchor("center")]);
-
-    btn.onClick(() => {
-        const inputName = prompt("Введите ваш никнейм:", "Судья");
-        playerNickname = (inputName && inputName.trim() !== "") ? inputName.trim() : "Аноним";
-
-        const shuffled = [...fullDatabase].sort(() => 0.5 - Math.random());
-        currentGameCases = shuffled.slice(0, 10);
-        idx = 0;
-        score = 0;
-        currentHistory = [];
-        go("game");
-    });
-});
-
-scene("game", () => {
-    let timeLeft = 20;
-    const currentCase = currentGameCases[idx];
-
-    add([
-        text(`Дело ${idx + 1}/10`, { size: 16 }),
-        pos(30, 40),
-        color(148, 163, 184)
-    ]);
-
-    const timerText = add([
-        text(`${timeLeft}с`, { size: 18 }),
-        pos(370, 40),
-        color(248, 113, 113),
-        anchor("topright")
-    ]);
-
-    add([
-        rect(340, 200, { radius: 12 }),
-        pos(center().x, 200),
-        color(51, 65, 85),
-        anchor("center")
-    ]);
-
-    add([
-        text(currentCase.desc, { size: 15, width: 300 }),
-        pos(center().x, 200),
-        anchor("center")
-    ]);
-
-    function makeChoice(userChoice) {
-        const isCorrect = userChoice !== null && userChoice === currentCase.isGuilty;
-        if (isCorrect) score++;
-
-        currentHistory.push({
-            desc: currentCase.desc,
-            isGuilty: currentCase.isGuilty,
-            userChoice: userChoice,
-            isCorrect: isCorrect
-        });
-
-        idx++;
-        if (idx < 10) {
-            go("game");
-        } else {
-            sendToTelegram(score, 10, currentHistory);
-            go("result");
+    for (let x = -MAP_SIZE / 2; x < MAP_SIZE / 2; x += tileW) {
+        for (let y = -MAP_SIZE / 2; y < MAP_SIZE / 2; y += tileH) {
+            const tile = new ex.Actor({ pos: ex.vec(x + tileW / 2, y + tileH / 2), width: tileW, height: tileH, z: 0 });
+            tile.graphics.use(bgSprite); 
+            game.add(tile);
         }
     }
 
-    const timerLoop = loop(1, () => {
-        timeLeft--;
-        timerText.text = `${timeLeft}с`;
-        if (timeLeft <= 0) {
-            timerLoop.cancel();
-            makeChoice(null);
+    const WALL_THICKNESS = 50;
+    const HALF_MAP = MAP_SIZE / 2 - 40;
+    
+    const boundaries = [
+        new ex.Actor({ pos: ex.vec(0, -HALF_MAP), width: MAP_SIZE, height: WALL_THICKNESS, collisionType: ex.CollisionType.Fixed }),
+        new ex.Actor({ pos: ex.vec(0, HALF_MAP), width: MAP_SIZE, height: WALL_THICKNESS, collisionType: ex.CollisionType.Fixed }),
+        new ex.Actor({ pos: ex.vec(-HALF_MAP, 0), width: WALL_THICKNESS, height: MAP_SIZE, collisionType: ex.CollisionType.Fixed }),
+        new ex.Actor({ pos: ex.vec(HALF_MAP, 0), width: WALL_THICKNESS, height: MAP_SIZE, collisionType: ex.CollisionType.Fixed })
+    ];
+    boundaries.forEach(wall => game.add(wall));
+
+    const LANTERN_SCALE = 0.18;
+    const commonSprite = lanternCommonImage.toSprite();
+    commonSprite.scale = ex.vec(LANTERN_SCALE, LANTERN_SCALE);
+    const purpleSprite = lanternPurpleImage.toSprite();
+    purpleSprite.scale = ex.vec(LANTERN_SCALE, LANTERN_SCALE);
+
+    // Установлены требуемые тексты: обычный фонарь и обманчивый фиолетовый
+    scanTargets = [
+        { id: 'l1', pos: ex.vec(180, -120), img: commonSprite, text: "Самый обычный фонарь...." },
+        { id: 'l2', pos: ex.vec(-180, -120), img: commonSprite, text: "Самый обычный фонарь...." },
+        { id: 'l3', pos: ex.vec(0, -180), img: commonSprite, text: "Самый обычный фонарь...." },
+        { id: 'l4', pos: ex.vec(200, 80), img: commonSprite, text: "Самый обычный фонарь...." },
+        { id: 'l5', pos: ex.vec(-200, 80), img: commonSprite, text: "Самый обычный фонарь...." },
+        { id: 'l_purple', pos: ex.vec(-160, -20), img: purpleSprite, text: "Пасфорд бермах - пароли бывают самыц большой страной" }
+    ];
+
+    scanTargets.forEach(t => {
+        const actor = new ex.Actor({ 
+            pos: t.pos, 
+            width: lanternCommonImage.width * LANTERN_SCALE, 
+            height: lanternCommonImage.height * LANTERN_SCALE, 
+            z: 5 
+        });
+        actor.graphics.use(t.img);
+        game.add(actor);
+    });
+
+    const GUARD_SCALE = 0.15;
+    const guardSprite = guardImage.toSprite();
+    guardSprite.scale = ex.vec(GUARD_SCALE, GUARD_SCALE);
+
+    npcActor = new ex.Actor({ 
+        pos: ex.vec(0, 180), 
+        width: guardImage.width * GUARD_SCALE, 
+        height: guardImage.height * GUARD_SCALE, 
+        z: 12,
+        collisionType: ex.CollisionType.Fixed
+    });
+    npcActor.graphics.use(guardSprite);
+    game.add(npcActor);
+
+    const PLAYER_SCALE = 0.12;
+    const animDown = new ex.Animation({ frames: hSources.map(s => ({ graphic: s.toSprite(), duration: 110 })) });
+    const animUp = new ex.Animation({ frames: aSources.map(s => ({ graphic: s.toSprite(), duration: 110 })) });
+    const animLeft = new ex.Animation({ frames: rSources.map(s => ({ graphic: s.toSprite(), duration: 110 })) });
+    const animRight = new ex.Animation({ frames: rSources.map(s => { const spr = s.toSprite(); spr.flipHorizontal = true; return { graphic: spr, duration: 110 }; }) });
+
+    animDown.play(); animUp.play(); animLeft.play(); animRight.play();
+
+    const idleDown = hSources[0].toSprite();
+    const idleUp = aSources[0].toSprite();
+    const idleLeft = rSources[0].toSprite();
+    const idleRight = rSources[0].toSprite();
+    idleRight.flipHorizontal = true;
+
+    player = new ex.Actor({
+        pos: ex.vec(0, -60),
+        width: hSources[0].width * PLAYER_SCALE * 0.6,
+        height: hSources[0].height * PLAYER_SCALE * 0.6,
+        z: 30,
+        collisionType: ex.CollisionType.Active
+    });
+
+    [animDown, animUp, animLeft, animRight].forEach(anim => anim.scale = ex.vec(PLAYER_SCALE, PLAYER_SCALE));
+    [idleDown, idleUp, idleLeft, idleRight].forEach(sprite => sprite.scale = ex.vec(PLAYER_SCALE, PLAYER_SCALE));
+
+    player.graphics.add('walk-down', animDown);
+    player.graphics.add('walk-up', animUp);
+    player.graphics.add('walk-left', animLeft);
+    player.graphics.add('walk-right', animRight);
+    player.graphics.add('idle-down', idleDown);
+    player.graphics.add('idle-up', idleUp);
+    player.graphics.add('idle-left', idleLeft);
+    player.graphics.add('idle-right', idleRight);
+
+    let currentDir = 'down';
+    player.graphics.use('idle-down');
+    game.add(player);
+
+    scanConeActor = new ex.Actor({ pos: player.pos, z: 25 });
+    scanConeActor.graphics.use(createScanCanvas());
+    game.add(scanConeActor);
+
+    game.currentScene.camera.zoom = 2.5;
+    game.currentScene.camera.strategy.elasticToActor(player, 0.2, 0.1);
+
+    game.on('update', (engine) => {
+        const deltaSec = engine.clock.elapsedMs / 1000;
+
+        if (scanCooldown) {
+            cooldownTimer -= deltaSec;
+            const rBase = document.getElementById('right-joystick-base');
+            const percent = Math.max(0, (cooldownTimer / COOLDOWN_MAX) * 100);
+            
+            rBase.style.background = `conic-gradient(rgba(244, 63, 94, 0.2) ${percent}%, rgba(15, 23, 42, 0.7) ${percent}%)`;
+
+            if (cooldownTimer <= 0) {
+                scanCooldown = false;
+                rBase.style.background = 'rgba(15, 23, 42, 0.6)';
+            }
         }
     });
 
-    const btnGuilty = add([
-        rect(140, 50, { radius: 8 }),
-        pos(110, 390),
-        color(239, 68, 68),
-        anchor("center"),
-        area()
-    ]);
-    btnGuilty.add([text("ВИНОВЕН", { size: 14 }), anchor("center")]);
-    btnGuilty.onClick(() => {
-        timerLoop.cancel();
-        makeChoice(true);
-    });
+    player.on('preupdate', () => {
+        if (moveVector.size > 0.1) {
+            player.vel = moveVector.scale(80);
+            if (Math.abs(moveVector.x) > Math.abs(moveVector.y)) {
+                if (moveVector.x > 0) { currentDir = 'right'; player.graphics.use('walk-right'); } 
+                else { currentDir = 'left'; player.graphics.use('walk-left'); }
+            } else {
+                if (moveVector.y > 0) { currentDir = 'down'; player.graphics.use('walk-down'); } 
+                else { currentDir = 'up'; player.graphics.use('walk-up'); }
+            }
+        } else {
+            player.vel = ex.vec(0, 0);
+            player.graphics.use(`idle-${currentDir}`);
+        }
 
-    const btnInnocent = add([
-        rect(140, 50, { radius: 8 }),
-        pos(290, 390),
-        color(34, 197, 94),
-        anchor("center"),
-        area()
-    ]);
-    btnInnocent.add([text("НЕ ВИНОВЕН", { size: 12 }), anchor("center")]);
-    btnInnocent.onClick(() => {
-        timerLoop.cancel();
-        makeChoice(false);
+        scanConeActor.pos = player.pos;
+        scanConeActor.rotation = scanVector.toAngle();
+        scanConeActor.graphics.current.opacity = (isScanningActive && !scanCooldown) ? 1.0 : 0.25;
+
+        if (player.pos.distance(npcActor.pos) < 40) {
+            openGuardDialogue();
+        }
     });
 });
 
-scene("result", () => {
-    const isWin = score >= 7;
+function checkScan() {
+    if (scanCooldown) return;
 
-    add([
-        text(isWin ? "ПОБЕДА!" : "ПОРАЖЕНИЕ!", { size: 32 }),
-        pos(center().x, 180),
-        color(isWin ? rgb(34, 197, 94) : rgb(239, 68, 68)),
-        anchor("center")
-    ]);
+    scanCooldown = true;
+    cooldownTimer = COOLDOWN_MAX;
+    isScanningActive = false;
 
-    add([
-        text(`Верно: ${score} из 10`, { size: 20 }),
-        pos(center().x, 250),
-        anchor("center")
-    ]);
+    let found = false;
+    const info = document.getElementById('scan-info');
+    
+    for (let t of scanTargets) {
+        const dist = player.pos.distance(t.pos);
+        if (dist < 140) {
+            const dirToTarget = t.pos.sub(player.pos).normalize();
+            const dot = scanVector.dot(dirToTarget);
+            
+            if (dot > 0.5) {
+                info.innerHTML = t.text;
+                found = true;
+                break;
+            }
+        }
+    }
+    if (!found) info.innerHTML = "Сканер: Цель не попала в луч.";
+}
 
-    const btnRestart = add([
-        rect(220, 50, { radius: 8 }),
-        pos(center().x, 360),
-        color(59, 130, 246),
-        anchor("center"),
-        area()
-    ]);
+let isDialogueOpen = false;
 
-    btnRestart.add([text("ИГРАТЬ СНОВА", { size: 16 }), anchor("center")]);
-    btnRestart.onClick(() => go("start"));
-});
+function openGuardDialogue() {
+    if (isDialogueOpen) return;
+    isDialogueOpen = true;
+    player.vel = ex.vec(0,0);
+    moveVector = ex.vec(0,0);
+    document.getElementById('dialogue-modal').style.display = 'flex';
+    document.getElementById('password-field').value = '';
+    document.getElementById('password-field').focus();
+}
 
-go("start");
+function submitPassword() {
+    const rawInput = document.getElementById('password-field').value.trim();
+    const input = rawInput.toUpperCase().replace(/\s+/g, '');
+    document.getElementById('dialogue-modal').style.display = 'none';
+
+    const resModal = document.getElementById('result-modal');
+    const resContent = document.getElementById('result-content');
+
+    if (input === "ФИОЛЕТОВЫЙБЕРМАХ") {
+        resContent.innerHTML = `
+            <h2 style="color: #22c55e;">ДЕЛО #1 ЗАВЕРШЕНО!</h2>
+            <p><b>ОТЛИЧНАЯ РАБОТА, ДЕТЕКТИВ!</b><br><br> Вы разгадали хитрость и назвали правильный пароль: <b>ФИОЛЕТОВЫЙ БЕРМАХ</b>.<br><br>Охранник пропустил вас в Синдикат!</p>
+            <button class="btn" style="background: #22c55e;" onclick="location.reload()">Пройти заново</button>
+        `;
+    } else {
+        resContent.innerHTML = `
+            <h2 style="color: #f43f5e;">ОПЕРАЦИЯ ПРОВАЛЕНА!</h2>
+            <p>Пароль <i>«${rawInput}»</i> неверный! Охрана подняла тревогу.</p>
+            <button class="btn btn-danger" onclick="location.reload()">Попробовать снова</button>
+        `;
+    }
+
+    resModal.style.display = 'flex';
+}
 </script>
 </body>
 </html>
+
