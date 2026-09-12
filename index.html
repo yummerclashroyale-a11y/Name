@@ -26,7 +26,6 @@
         #ui-overlay { position: absolute; top: 10px; left: 10px; z-index: 200; pointer-events: none; }
         .scan-info { background: rgba(15, 23, 42, 0.85); border: 1px solid #38bdf8; color: #38bdf8; padding: 10px 14px; border-radius: 8px; font-size: 13px; max-width: 320px; backdrop-filter: blur(4px); }
 
-        /* Экран заставки */
         #intro-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #050b14; z-index: 999; display: flex; flex-direction: column;
@@ -73,7 +72,7 @@
 </div>
 
 <div id="ui-overlay">
-    <div id="scan-info" class="scan-info"><b>Детективный сканер:</b> Ищите улики правым джойстиком.</div>
+    <div id="scan-info" class="scan-info"><b>Детективный сканер:</b> Целитесь правым джойстиком в фонари.</div>
 </div>
 
 <div id="dialogue-modal" class="modal" style="display:none;">
@@ -90,7 +89,6 @@
 </div>
 
 <script>
-// Авто-скрытие заставки через 2.5 секунды
 setTimeout(() => {
     const intro = document.getElementById('intro-screen');
     intro.style.opacity = '0';
@@ -100,10 +98,6 @@ setTimeout(() => {
 let moveVector = ex.vec(0, 0);
 let scanVector = ex.vec(1, 0);
 let isScanningActive = false;
-
-let scanCooldown = false;
-let cooldownTimer = 0;
-const COOLDOWN_MAX = 2.0;
 
 const game = new ex.Engine({
     canvasElementId: 'game-canvas',
@@ -170,16 +164,15 @@ function setupJoystick(baseId, stickId, onMove, onRelease) {
 
 setupJoystick("left-joystick-base", "left-joystick-stick", v => moveVector = v, () => moveVector = ex.vec(0,0));
 
+// Больше никакого КД — сканер срабатывает мгновенно при отпускании правого джойстика
 setupJoystick("right-joystick-base", "right-joystick-stick", 
     v => { 
-        if (scanCooldown) return;
         if (v.size > 0.1) { 
             scanVector = v.normalize(); 
             isScanningActive = true; 
         } 
     },
     () => { 
-        if (scanCooldown) return;
         if (isScanningActive) { 
             checkScan(); 
             isScanningActive = false; 
@@ -195,7 +188,7 @@ function createScanCanvas() {
             ctx.clearRect(0, 0, R * 2, R * 2);
             ctx.beginPath();
             ctx.moveTo(R, R);
-            ctx.arc(R, R, R, -35 * Math.PI / 180, 35 * Math.PI / 180);
+            ctx.arc(R, R, R, -30 * Math.PI / 180, 30 * Math.PI / 180);
             ctx.closePath();
 
             const grad = ctx.createRadialGradient(R, R, 0, R, R, R);
@@ -242,7 +235,6 @@ game.start(loader).then(() => {
     const purpleSprite = lanternPurpleImage.toSprite();
     purpleSprite.scale = ex.vec(LANTERN_SCALE, LANTERN_SCALE);
 
-    // Установлены требуемые тексты: обычный фонарь и обманчивый фиолетовый
     scanTargets = [
         { id: 'l1', pos: ex.vec(180, -120), img: commonSprite, text: "Самый обычный фонарь...." },
         { id: 'l2', pos: ex.vec(-180, -120), img: commonSprite, text: "Самый обычный фонарь...." },
@@ -322,23 +314,6 @@ game.start(loader).then(() => {
     game.currentScene.camera.zoom = 2.5;
     game.currentScene.camera.strategy.elasticToActor(player, 0.2, 0.1);
 
-    game.on('update', (engine) => {
-        const deltaSec = engine.clock.elapsedMs / 1000;
-
-        if (scanCooldown) {
-            cooldownTimer -= deltaSec;
-            const rBase = document.getElementById('right-joystick-base');
-            const percent = Math.max(0, (cooldownTimer / COOLDOWN_MAX) * 100);
-            
-            rBase.style.background = `conic-gradient(rgba(244, 63, 94, 0.2) ${percent}%, rgba(15, 23, 42, 0.7) ${percent}%)`;
-
-            if (cooldownTimer <= 0) {
-                scanCooldown = false;
-                rBase.style.background = 'rgba(15, 23, 42, 0.6)';
-            }
-        }
-    });
-
     player.on('preupdate', () => {
         if (moveVector.size > 0.1) {
             player.vel = moveVector.scale(80);
@@ -356,7 +331,7 @@ game.start(loader).then(() => {
 
         scanConeActor.pos = player.pos;
         scanConeActor.rotation = scanVector.toAngle();
-        scanConeActor.graphics.current.opacity = (isScanningActive && !scanCooldown) ? 1.0 : 0.25;
+        scanConeActor.graphics.current.opacity = isScanningActive ? 1.0 : 0.25;
 
         if (player.pos.distance(npcActor.pos) < 40) {
             openGuardDialogue();
@@ -365,10 +340,6 @@ game.start(loader).then(() => {
 });
 
 function checkScan() {
-    if (scanCooldown) return;
-
-    scanCooldown = true;
-    cooldownTimer = COOLDOWN_MAX;
     isScanningActive = false;
 
     let found = false;
@@ -376,18 +347,19 @@ function checkScan() {
     
     for (let t of scanTargets) {
         const dist = player.pos.distance(t.pos);
-        if (dist < 140) {
+        // Уменьшена дистанция и повышен порог угла для точного попадания лучом
+        if (dist < 130) {
             const dirToTarget = t.pos.sub(player.pos).normalize();
             const dot = scanVector.dot(dirToTarget);
             
-            if (dot > 0.5) {
+            if (dot > 0.7) { 
                 info.innerHTML = t.text;
                 found = true;
                 break;
             }
         }
     }
-    if (!found) info.innerHTML = "Сканер: Цель не попала в луч.";
+    if (!found) info.innerHTML = "Сканер: Наведите луч точнее на фонарь.";
 }
 
 let isDialogueOpen = false;
@@ -413,7 +385,7 @@ function submitPassword() {
     if (input === "ФИОЛЕТОВЫЙБЕРМАХ") {
         resContent.innerHTML = `
             <h2 style="color: #22c55e;">ДЕЛО #1 ЗАВЕРШЕНО!</h2>
-            <p><b>ОТЛИЧНАЯ РАБОТА, ДЕТЕКТИВ!</b><br><br> Вы разгадали хитрость и назвали правильный пароль: <b>ФИОЛЕТОВЫЙ БЕРМАХ</b>.<br><br>Охранник пропустил вас в Синдикат!</p>
+            <p><b>ОТЛИЧНАЯ РАБОТА, ДЕТЕКТИВ!</b><br><br> Вы раскусили обманку и ввели правильный пароль: <b>ФИОЛЕТОВЫЙ БЕРМАХ</b>.<br><br>Охранник пропустил вас в Синдикат!</p>
             <button class="btn" style="background: #22c55e;" onclick="location.reload()">Пройти заново</button>
         `;
     } else {
@@ -429,4 +401,5 @@ function submitPassword() {
 </script>
 </body>
 </html>
+
 
