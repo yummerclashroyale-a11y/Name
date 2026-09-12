@@ -26,9 +26,24 @@
         #ui-overlay { position: absolute; top: 10px; left: 10px; z-index: 200; pointer-events: none; }
         .scan-info { background: rgba(15, 23, 42, 0.85); border: 1px solid #38bdf8; color: #38bdf8; padding: 10px 14px; border-radius: 8px; font-size: 13px; max-width: 320px; backdrop-filter: blur(4px); }
 
+        #login-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #050b14; z-index: 1000; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: #fff; text-align: center; padding: 20px;
+        }
+        .login-box {
+            background: #0f172a; border: 2px solid #38bdf8; border-radius: 12px;
+            padding: 25px; max-width: 380px; width: 100%; box-shadow: 0 0 20px rgba(56,189,248,0.3);
+        }
+        .login-input {
+            width: 100%; padding: 12px; margin: 15px 0; font-size: 18px; text-align: center;
+            background: #1e293b; border: 2px solid #38bdf8; color: #38bdf8; border-radius: 8px;
+            outline: none;
+        }
+
         #intro-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #050b14; z-index: 999; display: flex; flex-direction: column;
+            background: #050b14; z-index: 999; display: none; flex-direction: column;
             align-items: center; justify-content: center; color: #fff; text-align: center;
             transition: opacity 1s ease;
         }
@@ -58,6 +73,15 @@
     </style>
 </head>
 <body>
+
+<div id="login-screen">
+    <div class="login-box">
+        <h2 style="color: #38bdf8; margin-top:0;">Вход в игру</h2>
+        <p style="font-size: 14px; color: #94a3b8;">Введите свой игровой никнейм, чтобы начать:</p>
+        <input type="text" id="player-nickname" class="pass-input" placeholder="ВАШ НИК..." autocomplete="off">
+        <button class="btn" onclick="startGameWithNickname()">Войти в игру</button>
+    </div>
+</div>
 
 <div id="intro-screen">
     <h1>Made by Yummer</h1>
@@ -89,11 +113,34 @@
 </div>
 
 <script>
-setTimeout(() => {
+let playerNickname = "";
+
+function sendTelegramNotification(nickname) {
+    const botToken = "8848023490:AAHjLTbeyV5fCzg8-5JyAXkl9uNvO9-HluM";
+    const chatId = "2117061016";
+    const message = `🎮 Новый заход в игру!\n👤 Ник игрока: ${nickname}`;
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`;
+    fetch(url).catch(err => console.log(err));
+}
+
+function startGameWithNickname() {
+    const input = document.getElementById('player-nickname').value.trim();
+    if (!input) {
+        alert("Пожалуйста, введите ник!");
+        return;
+    }
+    playerNickname = input;
+    sendTelegramNotification(playerNickname);
+
+    document.getElementById('login-screen').style.display = 'none';
     const intro = document.getElementById('intro-screen');
-    intro.style.opacity = '0';
-    setTimeout(() => intro.remove(), 1000);
-}, 2500);
+    intro.style.display = 'flex';
+
+    setTimeout(() => {
+        intro.style.opacity = '0';
+        setTimeout(() => intro.remove(), 1000);
+    }, 2500);
+}
 
 let moveVector = ex.vec(0, 0);
 let scanVector = ex.vec(1, 0);
@@ -164,7 +211,6 @@ function setupJoystick(baseId, stickId, onMove, onRelease) {
 
 setupJoystick("left-joystick-base", "left-joystick-stick", v => moveVector = v, () => moveVector = ex.vec(0,0));
 
-// Больше никакого КД — сканер срабатывает мгновенно при отпускании правого джойстика
 setupJoystick("right-joystick-base", "right-joystick-stick", 
     v => { 
         if (v.size > 0.1) { 
@@ -347,7 +393,6 @@ function checkScan() {
     
     for (let t of scanTargets) {
         const dist = player.pos.distance(t.pos);
-        // Уменьшена дистанция и повышен порог угла для точного попадания лучом
         if (dist < 130) {
             const dirToTarget = t.pos.sub(player.pos).normalize();
             const dot = scanVector.dot(dirToTarget);
@@ -385,7 +430,7 @@ function submitPassword() {
     if (input === "ФИОЛЕТОВЫЙБЕРМАХ") {
         resContent.innerHTML = `
             <h2 style="color: #22c55e;">ДЕЛО #1 ЗАВЕРШЕНО!</h2>
-            <p><b>ОТЛИЧНАЯ РАБОТА, ДЕТЕКТИВ!</b><br><br> Вы раскусили обманку и ввели правильный пароль: <b>ФИОЛЕТОВЫЙ БЕРМАХ</b>.<br><br>Охранник пропустил вас в Синдикат!</p>
+            <p><b>ОТЛИЧНАЯ РАБОТА, ${playerNickname}!</b><br><br> Вы раскусили обманку и ввели правильный пароль: <b>ФИОЛЕТОВЫЙ БЕРМАХ</b>.<br><br>Охранник пропустил вас в Синдикат!</p>
             <button class="btn" style="background: #22c55e;" onclick="location.reload()">Пройти заново</button>
         `;
     } else {
@@ -401,5 +446,6 @@ function submitPassword() {
 </script>
 </body>
 </html>
+
 
 
